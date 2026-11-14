@@ -22,10 +22,18 @@ h1{margin:0;font-size:22px;letter-spacing:3px;color:var(--mut);text-align:center
 .bars i s{position:absolute;top:-16px;left:0;right:0;text-align:center;font-size:11px;text-decoration:none;color:var(--tx)}
 .lab{display:flex;gap:4px;font-size:11px;color:var(--mut)}.lab span{flex:1;text-align:center}
 .act{display:flex;gap:10px;margin-top:16px}.act button{flex:1;padding:12px;border:0;border-radius:10px;background:#333;color:#fff;font-size:15px;cursor:pointer}
+.tabs{display:flex;gap:10px}.tabs button{padding:14px 28px;font-size:20px;font-weight:800;border:0;border-radius:14px;background:#26262b;color:var(--mut);cursor:pointer}.tabs button.on{background:var(--ac);color:#000}
+table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--mut);text-align:center;padding:6px}td{padding:4px;text-align:center}
+td input{width:70px;font-size:20px;padding:8px;text-align:center;border-radius:8px;border:1px solid #444;background:#111;color:#fff}td input.nm{width:100%;text-align:left}
+td select{font-size:16px;padding:8px;border-radius:8px;background:#111;color:#fff;border:1px solid #444}
+.cu{font-size:20px;font-weight:700}.ok{color:#1fb55a}.bad{color:#ff5a5a}
+.cd{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}.cd div{flex:1;min-width:220px;background:#26262b;border-radius:14px;padding:14px;text-align:center}.cd strong{font-size:26px;display:block}
 @media(max-width:560px){.row{grid-template-columns:1fr}}
 </style>
 <img src="assets/logo-the-island-tarragona.png" alt="The Island Tarragona" style="width:min(70vw,320px);background:#fff;border-radius:14px;padding:10px">
 <h1>CONSUMICIONES</h1><div id="fecha" style="font-size:40px;font-weight:800;text-align:center;color:var(--ac);text-transform:capitalize"></div>
+<div class="tabs"><button id="t1" class="on" onclick="tab(1)">TICKETS</button><button id="t2" onclick="tab(2)">STOCK BARRA</button></div>
+<div id="v1" style="display:contents">
 <div class="qty"><button onclick="ch(-1)">−</button><span id="q">1</span><button onclick="ch(1)">+</button></div>
 <div class="row">
  <div class="card"><b>COPA</b><div class="n" id="nc">0</div><button id="bc" onclick="pr('copa')">IMPRIMIR COPA</button></div>
@@ -42,6 +50,13 @@ h1{margin:0;font-size:22px;letter-spacing:3px;color:var(--mut);text-align:center
  <div class="bars" id="bars"></div><div class="lab" id="lab"></div>
  <div class="act"><button onclick="csv()">Descargar CSV</button><button onclick="rst()">Cerrar noche / poner a cero</button></div>
 </div>
+</div>
+<div id="v2" class="st" style="display:none"><h2>STOCK EN BARRA · CUADRE DE LA NOCHE</h2>
+ <p style="color:var(--mut);margin:0 0 12px;font-size:14px">Cuenta en unidades de servicio (copas, botellines, latas). Inicio + reposición − final = consumido. Debe coincidir con los tickets.</p>
+ <table><thead><tr><th style="text-align:left">Producto</th><th>Tipo</th><th>Inicio</th><th>Repos.</th><th>Final</th><th>Consumido</th><th></th></tr></thead><tbody id="sb"></tbody></table>
+ <div class="act"><button onclick="addp()">+ Añadir producto</button><button onclick="newnight()">Nueva noche (final → inicio)</button></div>
+ <div class="cd" id="cd"></div><div id="sm" style="color:var(--mut);text-align:center"></div>
+</div>
 <script>
 let BASE=location.port==='8765'?'':'http://127.0.0.1:8765';
 const PINK='island_pin';const gp=()=>{try{return localStorage.getItem(PINK)||''}catch(e){return''}};
@@ -53,7 +68,7 @@ async function findBase(){if(location.port==='8765'||location.protocol==='file:'
  try{const t=await (await fetch('/tunnel.json',{cache:'no-store'})).json();if(t.url){const ok=await fetch(t.url+'/stats',{headers:{'X-PIN':gp()}}).catch(()=>null);if(ok)BASE=t.url}}catch(e){}}
 let q=1;const $=id=>document.getElementById(id);
 let DATA=[];const load=()=>DATA;
-async function refresh(){try{DATA=await (await api('/stats')).json();render()}catch(e){$('msg').textContent='Sin conexión con la impresora (¿app abierta?)'}}
+async function refresh(){try{DATA=await (await api("/stats")).json();render();drawCuadre()}catch(e){$('msg').textContent='Sin conexión con la impresora (¿app abierta?)'}}
 function ch(d){q=Math.min(50,Math.max(1,q+d));$('q').textContent=q}
 // la "noche" va de las 18:00 a las 12:00 del día siguiente: el eje de horas empieza a las 18
 const ORDER=[18,19,20,21,22,23,0,1,2,3,4,5,6];
@@ -79,5 +94,30 @@ function csv(){const a=load();const s='fecha_hora,tipo,cantidad\n'+a.map(e=>new 
 async function rst(){if(confirm('¿Cerrar la noche y poner todo a cero? Descarga el CSV antes si lo necesitas.')){await api('/stats/reset',{method:'POST'});refresh()}}
 const fd=()=>{$('fecha').textContent=new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'})};fd();setInterval(fd,60000);
 function goip(){const v=$('ip').value.trim();if(v)location.href='http://'+v+':8765/'}
+let ST=null;
+const SEED=[['Ron','copa'],['Ginebra','copa'],['Vodka','copa'],['Whisky','copa'],['Refresco','refresco'],['Cerveza','refresco']];
+function tab(n){$('v1').style.display=n==1?'contents':'none';$('v2').style.display=n==2?'block':'none';$('t1').className=n==1?'on':'';$('t2').className=n==2?'on':'';if(n==2)loadStock()}
+async function loadStock(){try{ST=await (await api('/stock')).json()}catch(e){$('sm').textContent='Sin conexión con la impresora/servidor';return}
+ if(!ST||!ST.products){ST={products:SEED.map((x,i)=>({id:i+1,name:x[0],cat:x[1],ini:0,rep:0,fin:null}))};saveStock()}
+ await refresh();drawStock()}
+let svT;function saveStock(){clearTimeout(svT);svT=setTimeout(()=>api('/stock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ST)}).then(()=>{$('sm').textContent='Guardado '+new Date().toLocaleTimeString('es-ES')}).catch(()=>{$('sm').textContent='ERROR al guardar'}),400)}
+const num=v=>v===''||v===null?null:Math.max(0,parseFloat(v)||0);
+function setf(id,k,v){const p=ST.products.find(x=>x.id==id);p[k]=k==='fin'?num(v):(k==='name'||k==='cat'?v:(num(v)||0));saveStock();drawCuadre()}
+function addp(){const n=prompt('Nombre del producto:');if(!n)return;ST.products.push({id:Date.now(),name:n.trim(),cat:'refresco',ini:0,rep:0,fin:null});saveStock();drawStock()}
+function delp(id){if(confirm('¿Quitar este producto?')){ST.products=ST.products.filter(x=>x.id!=id);saveStock();drawStock()}}
+function newnight(){if(!confirm('Nueva noche: el stock final pasa a ser el inicial y se borran reposiciones y finales. ¿Seguro? (Descarga/anota el cuadre antes)'))return;
+ ST.products.forEach(p=>{p.ini=p.fin===null?p.ini+p.rep:p.fin;p.rep=0;p.fin=null});saveStock();drawStock()}
+function drawStock(){$('sb').innerHTML=ST.products.map(p=>`<tr><td><input class="nm" value="${p.name.replace(/"/g,'&quot;')}" onchange="setf(${p.id},'name',this.value)"></td>
+ <td><select onchange="setf(${p.id},'cat',this.value);drawStock()"><option value="copa" ${p.cat==='copa'?'selected':''}>Copa</option><option value="refresco" ${p.cat!=='copa'?'selected':''}>Refresco/cerveza</option></select></td>
+ <td><input type="number" min="0" value="${p.ini}" onchange="setf(${p.id},'ini',this.value);drawStock()"></td>
+ <td><input type="number" min="0" value="${p.rep}" onchange="setf(${p.id},'rep',this.value);drawStock()"></td>
+ <td><input type="number" min="0" value="${p.fin===null?'':p.fin}" placeholder="–" onchange="setf(${p.id},'fin',this.value);drawStock()"></td>
+ <td class="cu">${p.fin===null?'–':p.ini+p.rep-p.fin}</td><td><button onclick="delp(${p.id})" style="background:none;border:0;color:#888;font-size:20px;cursor:pointer">✕</button></td></tr>`).join('');drawCuadre()}
+function drawCuadre(){if(!ST)return;const a=load();let t={copa:0,refresco:0};a.forEach(e=>t[e.t]=(t[e.t]||0)+e.n);
+ const c={copa:0,refresco:0},pend={copa:0,refresco:0};
+ ST.products.forEach(p=>{const k=p.cat==='copa'?'copa':'refresco';if(p.fin===null)pend[k]++;else c[k]+=p.ini+p.rep-p.fin});
+ const L={copa:'COPAS',refresco:'REFRESCO O CERVEZA'};
+ $('cd').innerHTML=['copa','refresco'].map(k=>{const d=c[k]-t[k];const cls=pend[k]?'':(d===0?'ok':'bad');
+  return `<div><small>${L[k]}</small><strong>Tickets: ${t[k]}</strong><strong>Stock gastado: ${c[k]}</strong><strong class="${cls}">${pend[k]?'Faltan '+pend[k]+' por contar':(d===0?'✔ CUADRA':(d>0?'Faltan tickets: '+d:'Sobran tickets: '+(-d)))}</strong></div>`}).join('')}
 render();findBase().then(()=>{refresh();setInterval(refresh,10000)});
 </script></html>

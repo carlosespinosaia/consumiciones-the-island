@@ -7,6 +7,7 @@ PRINTER = "POS_P80"
 PORT = 8765
 STATS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stats.json")
 LOCK = threading.Lock()
+STOCKF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stock.json")
 HERE = os.path.dirname(os.path.abspath(__file__))
 PINF = os.path.join(HERE, "pin.txt")
 if not os.path.exists(PINF):
@@ -68,6 +69,11 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             self._send(200, HTML.encode(), "text/html")
+        elif self.path == "/stock":
+            if self._auth():
+                try: d = open(STOCKF).read()
+                except Exception: d = "null"
+                self._send(200, d.encode())
         elif self.path == "/stats":
             if self._auth(): self._send(200, json.dumps(stats_load()).encode())
         elif self.path == "/assets/logo-the-island-tarragona.png":
@@ -76,6 +82,13 @@ class H(BaseHTTPRequestHandler):
             self._send(404, b"{}")
     def do_POST(self):
         if not self._auth(): return
+        if self.path == "/stock":
+            try:
+                d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                with LOCK: open(STOCKF, "w").write(json.dumps(d))
+                return self._send(200, b'{"ok": true}')
+            except Exception as e:
+                return self._send(500, json.dumps({"ok": False, "error": str(e)}).encode())
         if self.path == "/stats/reset":
             with LOCK: stats_save([])
             return self._send(200, b'{"ok": true}')
