@@ -48,6 +48,28 @@ def ticket(qty, kind="copa"):
            + GS + b"V" + b"\x42" + b"\x00")            # avance y corte parcial
     return one * qty
 
+
+def voucher_ticket(it):
+    """Entrada o vale numerado con código de barras CODE128."""
+    ESC, GS = b"\x1b", b"\x1d"
+    kind = "ENTRADA" if it.get("kind") == "entrada" else "VALE CONSUMICIÓN"
+    code = re.sub(r"[^0-9A-Za-z]", "", str(it.get("code", "")))[:30] or "0"
+    n = str(it.get("n", ""))[:8]
+    typ = str(it.get("type", ""))[:40]
+    try: ts = datetime.datetime.fromtimestamp(int(it.get("ts")) / 1000)
+    except Exception: ts = datetime.datetime.now()
+    c = lambda t: t.encode("cp858", "replace")
+    return (ESC + b"@" + ESC + b"t" + bytes([19]) + ESC + b"a" + b"\x01"
+            + LOGO + b"\n" + ESC + b"E" + b"\x01"
+            + GS + b"!" + b"\x11" + c(kind + "\n") + GS + b"!" + b"\x00"
+            + c(typ + "\n") + b"\n"
+            + GS + b"!" + b"\x33" + c("Nº " + n + "\n") + GS + b"!" + b"\x00" + ESC + b"E" + b"\x00"
+            + b"\n" + GS + b"h" + bytes([90]) + GS + b"w" + bytes([2]) + GS + b"H" + bytes([2]) + GS + b"f" + bytes([0])
+            + GS + b"k" + bytes([73, len(code) + 2]) + b"{B" + c(code) + b"\n"
+            + c(f"{DIAS[ts.weekday()]} {ts:%d/%m/%Y} {ts:%H:%M}\n")
+            + (c("1 CONSUMICIÓN · canjeable una sola vez\n") if it.get("kind") != "entrada" else b"")
+            + ESC + b"d" + b"\x04" + GS + b"V" + b"\x42" + b"\x00")
+
 class H(BaseHTTPRequestHandler):
     def _auth(self):
         local = self.client_address[0] == "127.0.0.1" and not self.headers.get("Cf-Connecting-Ip")
@@ -92,12 +114,31 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/stats/reset":
             with LOCK: stats_save([])
             return self._send(200, b'{"ok": true}')
+        if self.path == "/print-voucher":
+            try:
+                d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                items = d.get("items", [])
+                if not 1 <= len(items) <= 100: raise ValueError("entre 1 y 100 tickets")
+                dev = subprocess.run(["lpinfo", "-v"], capture_output=True, text=True).stdout
+                if "Receipt" not in dev:
+                    raise RuntimeError("La impresora no está conectada o está apagada. Revisa el cable USB y la corriente.")
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
+                    f.write(b"".join(voucher_ticket(i) for i in items)); path = f.name
+                r = subprocess.run(["lp", "-d", PRINTER, "-o", "raw", path], capture_output=True, text=True)
+                os.unlink(path)
+                if r.returncode: raise RuntimeError(r.stderr.strip())
+                return self._send(200, json.dumps({"ok": True, "n": len(items)}).encode())
+            except Exception as e:
+                return self._send(500, json.dumps({"ok": False, "error": str(e)}).encode())
         if self.path != "/print": return self._send(404, b"{}")
         try:
             d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             qty = int(d.get("qty", 1)); kind = d.get("type", "copa")
             if kind not in ("copa", "refresco"): raise ValueError("tipo no válido")
             if not 1 <= qty <= MAX_QTY: raise ValueError("cantidad fuera de rango")
+            dev = subprocess.run(["lpinfo", "-v"], capture_output=True, text=True).stdout
+            if "Receipt" not in dev:
+                raise RuntimeError("La impresora no está conectada o está apagada. Revisa el cable USB y la corriente.")
             with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
                 f.write(ticket(qty, kind)); path = f.name
             r = subprocess.run(["lp", "-d", PRINTER, "-o", "raw", path], capture_output=True, text=True)
