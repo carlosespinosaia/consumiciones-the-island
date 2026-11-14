@@ -70,6 +70,24 @@ def voucher_ticket(it):
             + (c("1 CONSUMICIÓN · canjeable una sola vez\n") if it.get("kind") != "entrada" else b"")
             + ESC + b"d" + b"\x04" + GS + b"V" + b"\x42" + b"\x00")
 
+def report_ticket(lines):
+    """Informe de texto libre (corte de caja, estadísticas). Cada línea: {t, s:1-3, b, a:l|c|r} o {logo}, {sep}, {feed}."""
+    ESC, GS = b"\x1b", b"\x1d"
+    out = ESC + b"@" + ESC + b"t" + bytes([19])
+    al = {"l": 0, "c": 1, "r": 2}
+    for ln in lines[:300]:
+        if ln.get("logo"):
+            out += ESC + b"a" + b"\x01" + LOGO + b"\n"; continue
+        if ln.get("sep"):
+            out += ESC + b"a" + b"\x00" + b"-" * 48 + b"\n"; continue
+        if ln.get("feed"):
+            out += b"\n" * min(int(ln["feed"]), 10); continue
+        sz = max(1, min(int(ln.get("s", 1)), 3)) - 1
+        out += (ESC + b"a" + bytes([al.get(ln.get("a", "l"), 0)]) + ESC + b"E" + bytes([1 if ln.get("b") else 0])
+                + GS + b"!" + bytes([sz * 16 + sz]) + str(ln.get("t", "")).encode("cp858", "replace") + b"\n")
+    out += GS + b"!" + b"\x00" + ESC + b"E" + b"\x00" + ESC + b"d" + b"\x04" + GS + b"V" + b"\x42" + b"\x00"
+    return out
+
 class H(BaseHTTPRequestHandler):
     def _auth(self):
         local = self.client_address[0] == "127.0.0.1" and not self.headers.get("Cf-Connecting-Ip")
@@ -114,6 +132,20 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/stats/reset":
             with LOCK: stats_save([])
             return self._send(200, b'{"ok": true}')
+        if self.path == "/print-report":
+            try:
+                d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                dev = subprocess.run(["lpinfo", "-v"], capture_output=True, text=True, timeout=20).stdout
+                if "Receipt" not in dev:
+                    raise RuntimeError("La impresora no está conectada o está apagada. Revisa el cable USB y la corriente.")
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
+                    f.write(report_ticket(d.get("lines", []))); path = f.name
+                r = subprocess.run(["lp", "-d", PRINTER, "-o", "raw", path], capture_output=True, text=True)
+                os.unlink(path)
+                if r.returncode: raise RuntimeError(r.stderr.strip())
+                return self._send(200, b'{"ok": true}')
+            except Exception as e:
+                return self._send(500, json.dumps({"ok": False, "error": str(e)}).encode())
         if self.path == "/print-voucher":
             try:
                 d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
