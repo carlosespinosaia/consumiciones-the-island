@@ -35,7 +35,7 @@ def ticket(qty, kind="copa"):
                 + b"\n" + GS + b"!" + b"\x22" + "1 CONSUMICIÓN\n".encode("cp858"))
     else:
         body = (b"\n" + GS + b"!" + b"\x33" + "REFRESCO\n".encode("cp858")
-                + b"\n" + GS + b"!" + b"\x33" + "Y CERVEZA\n".encode("cp858")
+                + b"\n" + GS + b"!" + b"\x33" + "O CERVEZA\n".encode("cp858")
                 + b"\n" + GS + b"!" + b"\x22" + "1 CONSUMICIÓN\n".encode("cp858"))
     one = (ESC + b"@" + ESC + b"t" + bytes([19])      # init + codepage CP858 (acentos)
            + ESC + b"a" + b"\x01" + ESC + b"E" + b"\x01"  # centrado, negrita

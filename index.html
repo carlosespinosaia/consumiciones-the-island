@@ -29,7 +29,7 @@ h1{margin:0;font-size:22px;letter-spacing:3px;color:var(--mut);text-align:center
 <div class="qty"><button onclick="ch(-1)">−</button><span id="q">1</span><button onclick="ch(1)">+</button></div>
 <div class="row">
  <div class="card"><b>COPA</b><div class="n" id="nc">0</div><button id="bc" onclick="pr('copa')">IMPRIMIR COPA</button></div>
- <div class="card"><b>REFRESCO Y CERVEZA</b><div class="n" id="nn">0</div><button id="bn" onclick="pr('refresco')">IMPRIMIR REFRESCO Y CERVEZA</button></div>
+ <div class="card"><b>REFRESCO O CERVEZA</b><div class="n" id="nn">0</div><button id="bn" onclick="pr('refresco')">IMPRIMIR REFRESCO O CERVEZA</button></div>
 </div>
 <div id="msg"></div>
 <div id="loc" style="display:none;width:min(100%,900px);background:#3a2a00;border:2px solid var(--ac);border-radius:16px;padding:16px;text-align:center;font-size:18px">
@@ -66,7 +66,7 @@ function render(){const a=load();let c=0,n=0;const h={};
  $('bars').innerHTML=ORDER.map(x=>`<i style="height:${(h[x]||0)/mx*100}%">${h[x]?'<s>'+h[x]+'</s>':''}</i>`).join('');
  $('lab').innerHTML=ORDER.map(x=>`<span>${x}h</span>`).join('')}
 async function pr(t){
- if(q>1&&!confirm('¿Imprimir '+q+' tickets de '+(t==='copa'?'COPA':'REFRESCO Y CERVEZA')+'?'))return;
+ if(q>1&&!confirm('¿Imprimir '+q+' tickets de '+(t==='copa'?'COPA':'REFRESCO O CERVEZA')+'?'))return;
  ['bc','bn'].forEach(i=>$(i).disabled=true);$('msg').textContent='Enviando…';
  try{const r=await api('/print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({qty:q,type:t})});
   const j=await r.json();if(!j.ok)throw new Error(j.error);
