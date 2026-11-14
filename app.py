@@ -34,7 +34,9 @@ def ticket(qty, kind="copa"):
         body = (b"\n" + GS + b"!" + b"\x33" + "COPA\n".encode("cp858")
                 + b"\n" + GS + b"!" + b"\x22" + "1 CONSUMICIÓN\n".encode("cp858"))
     else:
-        body = b"\n" + GS + b"!" + b"\x22" + "CONSUMICIÓN\n".encode("cp858")
+        body = (b"\n" + GS + b"!" + b"\x33" + "REFRESCO\n".encode("cp858")
+                + b"\n" + GS + b"!" + b"\x33" + "Y CERVEZA\n".encode("cp858")
+                + b"\n" + GS + b"!" + b"\x22" + "1 CONSUMICIÓN\n".encode("cp858"))
     one = (ESC + b"@" + ESC + b"t" + bytes([19])      # init + codepage CP858 (acentos)
            + ESC + b"a" + b"\x01" + ESC + b"E" + b"\x01"  # centrado, negrita
            + b"\n" + LOGO + b"\n" + ESC + b"E" + b"\x00"
@@ -81,7 +83,7 @@ class H(BaseHTTPRequestHandler):
         try:
             d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             qty = int(d.get("qty", 1)); kind = d.get("type", "copa")
-            if kind not in ("copa", "consumicion"): raise ValueError("tipo no válido")
+            if kind not in ("copa", "refresco"): raise ValueError("tipo no válido")
             if not 1 <= qty <= MAX_QTY: raise ValueError("cantidad fuera de rango")
             with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
                 f.write(ticket(qty, kind)); path = f.name
