@@ -61,8 +61,9 @@ td select{font-size:16px;padding:8px;border-radius:8px;background:#111;color:#ff
 let BASE=location.port==='8765'?'':'http://127.0.0.1:8765';
 const PINK='island_pin';const gp=()=>{try{return localStorage.getItem(PINK)||''}catch(e){return''}};
 async function api(path,o={}){o.headers=Object.assign({'X-PIN':gp()},o.headers||{});
- let r=await fetch(BASE+path,o);
- if(r.status===401){const v=prompt('PIN de la impresora (6 cifras):');if(v){try{localStorage.setItem(PINK,v.trim())}catch(e){}o.headers['X-PIN']=v.trim();r=await fetch(BASE+path,o)}}
+ const go=async()=>{const c=new AbortController();const t=setTimeout(()=>c.abort(),12000);try{return await fetch(BASE+path,Object.assign({},o,{signal:c.signal}))}finally{clearTimeout(t)}};
+ let r;try{r=await go()}catch(e){if(location.port!=='8765'){await findBase();r=await go()}else throw e}
+ if(r.status===401){const v=prompt('PIN de la impresora (6 cifras):');if(v){try{localStorage.setItem(PINK,v.trim())}catch(e){}o.headers['X-PIN']=v.trim();r=await go()}}
  return r}
 async function findBase(){if(location.port==='8765'||location.protocol==='file:')return;
  try{const t=await (await fetch('/tunnel.json',{cache:'no-store'})).json();if(t.url){const ok=await fetch(t.url+'/stats',{headers:{'X-PIN':gp()}}).catch(()=>null);if(ok)BASE=t.url}}catch(e){}}
