@@ -32,6 +32,11 @@ h1{margin:0;font-size:22px;letter-spacing:3px;color:var(--mut);text-align:center
  <div class="card"><b>CONSUMICIÓN</b><div class="n" id="nn">0</div><button id="bn" onclick="pr('consumicion')">IMPRIMIR CONSUMICIÓN</button></div>
 </div>
 <div id="msg"></div>
+<div id="loc" style="display:none;width:min(100%,900px);background:#3a2a00;border:2px solid var(--ac);border-radius:16px;padding:16px;text-align:center;font-size:18px">
+ Safari y otros navegadores bloquean la impresión desde esta página.<br>
+ <a href="http://127.0.0.1:8765/" style="color:var(--ac);font-weight:800;font-size:22px">ABRIR VERSIÓN PARA IMPRIMIR (en el Mac de la impresora)</a><br><br>
+ ¿Otro ordenador? IP del Mac: <input id="ip" placeholder="192.168.1.37" style="font-size:18px;padding:6px;width:150px"> <button onclick="goip()" style="font-size:18px;padding:6px 12px">Ir</button>
+</div>
 <div class="st"><h2>ESTADÍSTICA DE LA NOCHE</h2>
  <div class="kp"><div><strong id="kt">0</strong><small>Total</small></div><div><strong id="kc">0</strong><small>Copas</small></div><div><strong id="kn">0</strong><small>Consumiciones</small></div><div><strong id="kp">–</strong><small>Hora punta</small></div></div>
  <div class="bars" id="bars"></div><div class="lab" id="lab"></div>
@@ -60,11 +65,13 @@ async function pr(t){
   const j=await r.json();if(!j.ok)throw new Error(j.error);
   await refresh();
   $('msg').textContent='Enviado ('+q+'). Comprueba que ha salido el papel.';q=1;$('q').textContent=1;
- }catch(e){$('msg').textContent='ERROR: no se pudo imprimir. ¿Está abierta la app «Tickets COPA.command» y la impresora encendida? ('+e.message+')'}
+ }catch(e){$('loc').style.display='block';$('msg').textContent='ERROR: no se pudo imprimir. ¿Está abierta la app «Tickets COPA.command» y la impresora encendida? ('+e.message+')'}
  ['bc','bn'].forEach(i=>$(i).disabled=false)}
 function csv(){const a=load();const s='fecha_hora,tipo,cantidad\n'+a.map(e=>new Date(e.ts).toLocaleString('es-ES')+','+e.t+','+e.n).join('\n');
  const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([s],{type:'text/csv'}));l.download='consumiciones-'+new Date().toISOString().slice(0,10)+'.csv';l.click()}
 async function rst(){if(confirm('¿Cerrar la noche y poner todo a cero? Descarga el CSV antes si lo necesitas.')){await fetch(BASE+'/stats/reset',{method:'POST'});refresh()}}
 const fd=()=>{$('fecha').textContent=new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'})};fd();setInterval(fd,60000);
+if(location.port!=='8765')$('loc').style.display='block';
+function goip(){const v=$('ip').value.trim();if(v)location.href='http://'+v+':8765/'}
 render();refresh();setInterval(refresh,10000);
 </script></html>
