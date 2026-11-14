@@ -5,3 +5,6 @@ POS_P80_raw.ppd
 Tickets COPA.command
 __pycache__
 stats.json
+pin.txt
+bin
+tunnel.json.bak

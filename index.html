@@ -43,10 +43,17 @@ h1{margin:0;font-size:22px;letter-spacing:3px;color:var(--mut);text-align:center
  <div class="act"><button onclick="csv()">Descargar CSV</button><button onclick="rst()">Cerrar noche / poner a cero</button></div>
 </div>
 <script>
-const BASE=location.port==='8765'?'':'http://127.0.0.1:8765';
+let BASE=location.port==='8765'?'':'http://127.0.0.1:8765';
+const PINK='island_pin';const gp=()=>{try{return localStorage.getItem(PINK)||''}catch(e){return''}};
+async function api(path,o={}){o.headers=Object.assign({'X-PIN':gp()},o.headers||{});
+ let r=await fetch(BASE+path,o);
+ if(r.status===401){const v=prompt('PIN de la impresora (6 cifras):');if(v){try{localStorage.setItem(PINK,v.trim())}catch(e){}o.headers['X-PIN']=v.trim();r=await fetch(BASE+path,o)}}
+ return r}
+async function findBase(){if(location.port==='8765'||location.protocol==='file:')return;
+ try{const t=await (await fetch('/tunnel.json',{cache:'no-store'})).json();if(t.url){const ok=await fetch(t.url+'/stats',{headers:{'X-PIN':gp()}}).catch(()=>null);if(ok)BASE=t.url}}catch(e){}}
 let q=1;const $=id=>document.getElementById(id);
 let DATA=[];const load=()=>DATA;
-async function refresh(){try{DATA=await (await fetch(BASE+'/stats')).json();render()}catch(e){$('msg').textContent='Sin conexión con la impresora (¿app abierta?)'}}
+async function refresh(){try{DATA=await (await api('/stats')).json();render()}catch(e){$('msg').textContent='Sin conexión con la impresora (¿app abierta?)'}}
 function ch(d){q=Math.min(50,Math.max(1,q+d));$('q').textContent=q}
 // la "noche" va de las 18:00 a las 12:00 del día siguiente: el eje de horas empieza a las 18
 const ORDER=[18,19,20,21,22,23,0,1,2,3,4,5,6];
@@ -61,7 +68,7 @@ function render(){const a=load();let c=0,n=0;const h={};
 async function pr(t){
  if(q>1&&!confirm('¿Imprimir '+q+' tickets de '+(t==='copa'?'COPA':'CONSUMICIÓN')+'?'))return;
  ['bc','bn'].forEach(i=>$(i).disabled=true);$('msg').textContent='Enviando…';
- try{const r=await fetch(BASE+'/print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({qty:q,type:t})});
+ try{const r=await api('/print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({qty:q,type:t})});
   const j=await r.json();if(!j.ok)throw new Error(j.error);
   await refresh();
   $('msg').textContent='Enviado ('+q+'). Comprueba que ha salido el papel.';q=1;$('q').textContent=1;
@@ -69,9 +76,8 @@ async function pr(t){
  ['bc','bn'].forEach(i=>$(i).disabled=false)}
 function csv(){const a=load();const s='fecha_hora,tipo,cantidad\n'+a.map(e=>new Date(e.ts).toLocaleString('es-ES')+','+e.t+','+e.n).join('\n');
  const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([s],{type:'text/csv'}));l.download='consumiciones-'+new Date().toISOString().slice(0,10)+'.csv';l.click()}
-async function rst(){if(confirm('¿Cerrar la noche y poner todo a cero? Descarga el CSV antes si lo necesitas.')){await fetch(BASE+'/stats/reset',{method:'POST'});refresh()}}
+async function rst(){if(confirm('¿Cerrar la noche y poner todo a cero? Descarga el CSV antes si lo necesitas.')){await api('/stats/reset',{method:'POST'});refresh()}}
 const fd=()=>{$('fecha').textContent=new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'})};fd();setInterval(fd,60000);
-if(location.port!=='8765')$('loc').style.display='block';
 function goip(){const v=$('ip').value.trim();if(v)location.href='http://'+v+':8765/'}
-render();refresh();setInterval(refresh,10000);
+render();findBase().then(()=>{refresh();setInterval(refresh,10000)});
 </script></html>

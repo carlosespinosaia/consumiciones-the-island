@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Tickets COPA: servidor local (127.0.0.1) + página con botón IMPRIMIR TICKET."""
-import datetime, json, socket, time, subprocess, tempfile, os, threading, webbrowser
+import datetime, json, re, secrets, socket, time, subprocess, tempfile, os, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 PRINTER = "POS_P80"
 PORT = 8765
 STATS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stats.json")
 LOCK = threading.Lock()
+HERE = os.path.dirname(os.path.abspath(__file__))
+PINF = os.path.join(HERE, "pin.txt")
+if not os.path.exists(PINF):
+    open(PINF, "w").write("".join(secrets.choice("0123456789") for _ in range(6)))
+PIN = open(PINF).read().strip()
 
 def stats_load():
     try: return json.load(open(STATS))
@@ -41,6 +46,10 @@ def ticket(qty, kind="copa"):
     return one * qty
 
 class H(BaseHTTPRequestHandler):
+    def _auth(self):
+        local = self.client_address[0] == "127.0.0.1" and not self.headers.get("Cf-Connecting-Ip")
+        if local or self.headers.get("X-PIN", "") == PIN: return True
+        self._send(401, b'{"ok": false, "error": "PIN incorrecto"}'); return False
     def log_message(self, *a): pass
     def _send(self, code, body, ctype="application/json"):
         self.send_response(code); self.send_header("Content-Type", ctype + "; charset=utf-8")
@@ -51,19 +60,20 @@ class H(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-PIN")
         self.send_header("Access-Control-Allow-Private-Network", "true")
         self.end_headers()
     def do_GET(self):
         if self.path == "/":
             self._send(200, HTML.encode(), "text/html")
         elif self.path == "/stats":
-            self._send(200, json.dumps(stats_load()).encode())
+            if self._auth(): self._send(200, json.dumps(stats_load()).encode())
         elif self.path == "/assets/logo-the-island-tarragona.png":
             self._send(200, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo-the-island-tarragona.png"), "rb").read(), "image/png")
         else:
             self._send(404, b"{}")
     def do_POST(self):
+        if not self._auth(): return
         if self.path == "/stats/reset":
             with LOCK: stats_save([])
             return self._send(200, b'{"ok": true}')
@@ -91,5 +101,21 @@ if __name__ == "__main__":
     except Exception:
         ip = "IP-DEL-MAC"
     print(f"Otros ordenadores de la misma red: http://{ip}:{PORT}/", flush=True)
+    def tunnel():
+        cf = os.path.join(HERE, "bin", "cloudflared")
+        if not os.path.exists(cf): return
+        pr = subprocess.Popen([cf, "tunnel", "--url", f"http://127.0.0.1:{PORT}", "--no-autoupdate"],
+                              stderr=subprocess.PIPE, text=True)
+        for line in pr.stderr:
+            m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
+            if m:
+                url = m.group(0)
+                print(f"Dirección pública (desde cualquier ordenador): {url}  PIN: {PIN}", flush=True)
+                open(os.path.join(HERE, "tunnel.json"), "w").write(json.dumps({"url": url}))
+                subprocess.run("git add tunnel.json && git commit -qm 'tunel' && git push -q origin main", shell=True, cwd=HERE,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                break
+        for _ in pr.stderr: pass
+    threading.Thread(target=tunnel, daemon=True).start()
     threading.Timer(0.8, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}/")).start()
     srv.serve_forever()
